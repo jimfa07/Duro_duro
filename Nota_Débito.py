@@ -1,0 +1,97 @@
+import streamlit as st import pandas as pd from datetime import datetime from io import BytesIO import os
+
+Archivos
+
+DATA_FILE = "registro_data.pkl" DEPOSITS_FILE = "registro_depositos.pkl" NOTAS_FILE = "registro_notas.pkl"
+
+st.set_page_config(page_title="Registro Proveedores y Depósitos", layout="wide") st.title("Registro de Proveedores - Producto Pollo")
+
+Listas
+
+proveedores = ["LIRIS SA", "Gallina 1", "Monze Anzules", "Medina"] tipos_documento = ["Factura", "Nota de débito", "Nota de crédito"] agencias = [ "Cajero Automático Pichincha", "Cajero Automático Pacífico", "Cajero Automático Guayaquil", "Cajero Automático Bolivariano", "Banco Pichincha", "Banco del Pacifico", "Banco de Guayaquil", "Banco Bolivariano" ]
+
+Inicializar estados
+
+if "data" not in st.session_state: if os.path.exists(DATA_FILE): st.session_state.data = pd.read_pickle(DATA_FILE) st.session_state.data["Fecha"] = pd.to_datetime(st.session_state.data["Fecha"], errors="coerce").dt.date else: st.session_state.data = pd.DataFrame(columns=[ "Nº", "Fecha", "Proveedor", "Producto", "Cantidad", "Peso Salida (kg)", "Peso Entrada (kg)", "Tipo Documento", "Cantidad de gavetas", "Precio Unitario ($)", "Promedio", "Kilos Restantes", "Libras Restantes", "Total ($)", "Monto Depósito", "Saldo diario", "Saldo Acumulado" ]) fila_inicial = {col: None for col in st.session_state.data.columns} fila_inicial["Saldo diario"] = 0.00 fila_inicial["Saldo Acumulado"] = -35 st.session_state.data = pd.concat([pd.DataFrame([fila_inicial]), st.session_state.data], ignore_index=True)
+
+if "df" not in st.session_state: if os.path.exists(DEPOSITS_FILE): st.session_state.df = pd.read_pickle(DEPOSITS_FILE) st.session_state.df["Fecha"] = pd.to_datetime(st.session_state.df["Fecha"], errors="coerce").dt.date else: st.session_state.df = pd.DataFrame(columns=["Fecha", "Empresa", "Agencia", "Monto", "Documento", "N"])
+
+if "notas" not in st.session_state: if os.path.exists(NOTAS_FILE): st.session_state.notas = pd.read_pickle(NOTAS_FILE) st.session_state.notas["Fecha"] = pd.to_datetime(st.session_state.notas["Fecha"], errors="coerce").dt.date else: st.session_state.notas = pd.DataFrame(columns=["Fecha", "Libras calculadas", "Descuento", "Descuento posible", "Descuento real"])
+
+Sidebar - Registro de Depósitos
+
+st.sidebar.header("Registro de Depósitos") with st.sidebar.form("registro_form"): fecha_d = st.date_input("Fecha del registro", value=datetime.today(), key="fecha_d") empresa = st.selectbox("Empresa (Proveedor)", proveedores, key="empresa") agencia = st.selectbox("Agencia", agencias, key="agencia") monto = st.number_input("Monto", min_value=0.0, format="%.2f", key="monto") submit_d = st.form_submit_button("Agregar Depósito")
+
+if submit_d:
+    documento = "Depósito" if "Cajero" in agencia else "Transferencia"
+    df_actual = st.session_state.df
+    fecha_d_str = fecha_d
+
+    coincidencia = df_actual[(df_actual["Fecha"] == fecha_d_str) & (df_actual["Empresa"] == empresa)]
+    numero = coincidencia["N"].iloc[0] if not coincidencia.empty else f"{df_actual['Fecha'].nunique() + 1:02}"
+
+    nuevo_registro = {
+        "Fecha": fecha_d,
+        "Empresa": empresa,
+        "Agencia": agencia,
+        "Monto": monto,
+        "Documento": documento,
+        "N": numero
+    }
+
+    st.session_state.df = pd.concat([df_actual, pd.DataFrame([nuevo_registro])], ignore_index=True)
+    st.session_state.df["Fecha"] = pd.to_datetime(st.session_state.df["Fecha"], errors="coerce").dt.date
+    st.success("Depósito agregado exitosamente.")
+    st.session_state.df.to_pickle(DEPOSITS_FILE)
+
+Sidebar - Eliminar Depósito
+
+st.sidebar.subheader("Eliminar un Depósito") if not st.session_state.df.empty: st.session_state.df["Mostrar"] = st.session_state.df.apply(lambda row: f"{row['Fecha']} - {row['Empresa']} - ${row['Monto']:.2f}", axis=1) deposito_a_eliminar = st.sidebar.selectbox("Selecciona un depósito a eliminar", st.session_state.df["Mostrar"]) if st.sidebar.button("Eliminar depósito seleccionado"): index_eliminar = st.session_state.df[st.session_state.df["Mostrar"] == deposito_a_eliminar].index[0] st.session_state.df.drop(index=index_eliminar, inplace=True) st.session_state.df.reset_index(drop=True, inplace=True) st.session_state.df.to_pickle(DEPOSITS_FILE) st.sidebar.success("Depósito eliminado correctamente.")
+
+Formulario principal
+
+st.subheader("Registro de Proveedores") with st.form("formulario"): col1, col2, col3, col4 = st.columns(4) with col1: fecha = st.date_input("Fecha", value=datetime.today()) proveedor = st.selectbox("Proveedor", proveedores) with col2: cantidad = st.number_input("Cantidad", min_value=0, step=1, format="%d") peso_salida = st.number_input("Peso Salida (kg)", min_value=0.0, step=0.1) with col3: peso_entrada = st.number_input("Peso Entrada (kg)", min_value=0.0, step=0.1) documento = st.selectbox("Tipo Documento", tipos_documento) with col4: gavetas = st.number_input("Cantidad de gavetas", min_value=0, step=1) precio_unitario = st.number_input("Precio Unitario ($)", min_value=0.0, step=0.01) enviar = st.form_submit_button("Agregar Registro")
+
+if enviar: df = st.session_state.data.copy() producto = "Pollo" kilos_restantes = peso_salida - peso_entrada libras_restantes = kilos_restantes * 2.20462 promedio = libras_restantes / cantidad if cantidad != 0 else 0 total = libras_restantes * precio_unitario enumeracion = df["Fecha"].nunique() + 1 if fecha not in df["Fecha"].dropna().values else df[df["Fecha"] == fecha]["Nº"].iloc[0] depositos = st.session_state.df.copy() monto_deposito = depositos[(depositos["Fecha"] == fecha) & (depositos["Empresa"] == proveedor)]["Monto"].sum() saldo_diario = monto_deposito - total saldo_acumulado = df["Saldo Acumulado"].dropna().iloc[-1] + saldo_diario if df["Saldo Acumulado"].dropna().shape[0] > 0 else -35 if saldo_diario == 0 else saldo_diario
+
+nueva_fila = {
+    "Nº": enumeracion, "Fecha": fecha, "Proveedor": proveedor, "Producto": producto,
+    "Cantidad": cantidad, "Peso Salida (kg)": peso_salida, "Peso Entrada (kg)": peso_entrada,
+    "Tipo Documento": documento, "Cantidad de gavetas": gavetas, "Precio Unitario ($)": precio_unitario,
+    "Promedio": promedio, "Kilos Restantes": kilos_restantes, "Libras Restantes": libras_restantes,
+    "Total ($)": total, "Monto Depósito": monto_deposito, "Saldo diario": saldo_diario, "Saldo Acumulado": saldo_acumulado
+}
+st.session_state.data = pd.concat([df, pd.DataFrame([nueva_fila])], ignore_index=True)
+st.success("Registro agregado correctamente")
+st.session_state.data.to_pickle(DATA_FILE)
+
+Formulario Notas de Débito
+
+st.subheader("Notas de Débito") with st.form("form_nota"): fecha_nota = st.date_input("Fecha", value=datetime.today(), key="fecha_nota") descuento = st.number_input("Descuento (%)", min_value=0.0, max_value=1.0, step=0.01) descuento_real = st.number_input("Descuento real ($)", min_value=0.0, step=0.01) if st.form_submit_button("Agregar Nota de Débito"): libras = st.session_state.data[st.session_state.data["Fecha"] == fecha_nota]["Libras Restantes"].sum() descuento_posible = libras * descuento nueva_nota = {"Fecha": fecha_nota, "Libras calculadas": libras, "Descuento": descuento, "Descuento posible": descuento_posible, "Descuento real": descuento_real} st.session_state.notas = pd.concat([st.session_state.notas, pd.DataFrame([nueva_nota])], ignore_index=True) st.session_state.notas.to_pickle(NOTAS_FILE) st.success("Nota de débito agregada")
+
+Recalcular valores
+
+data_actualizada = st.session_state.data.copy() depositos = st.session_state.df.copy() notas = st.session_state.notas.copy() acumulado = -35 for i, row in data_actualizada.iterrows(): fecha = row["Fecha"] proveedor = row["Proveedor"] total = row["Total ($)"] monto_deposito = depositos[(depositos["Fecha"] == fecha) & (depositos["Empresa"] == proveedor)]["Monto"].sum() saldo_diario = monto_deposito - total if pd.notna(total) else None descuento_adicional = notas[notas["Fecha"] == fecha]["Descuento real"].sum() if not notas.empty else 0 acumulado += (saldo_diario if saldo_diario is not None else 0) + descuento_adicional data_actualizada.at[i, "Monto Depósito"] = monto_deposito data_actualizada.at[i, "Saldo diario"] = saldo_diario data_actualizada.at[i, "Saldo Acumulado"] = acumulado st.session_state.data = data_actualizada
+
+Eliminar último registro
+
+if st.button("Eliminar último registro"): if not st.session_state.data.empty: st.session_state.data = st.session_state.data.iloc[:-1] st.session_state.data.to_pickle(DATA_FILE) st.success("Último registro eliminado correctamente.") else: st.warning("No hay registros para eliminar.")
+
+Mostrar tabla principal
+
+st.subheader("Tabla de Registros") df_display = st.session_state.data.copy() df_display["Promedio"] = pd.to_numeric(df_display["Promedio"], errors="coerce").round(2) df_display["Saldo diario"] = df_display["Saldo diario"].apply(lambda x: f"${x:,.2f}" if pd.notna(x) else "") df_display["Saldo Acumulado"] = df_display["Saldo Acumulado"].apply(lambda x: f"${x:,.2f}" if pd.notna(x) else "") st.dataframe(df_display, use_container_width=True)
+
+Exportar Excel
+
+@st.cache_data def convertir_excel(df): output = BytesIO() df_copy = df.copy() df_copy["Saldo diario"] = pd.to_numeric(df_copy["Saldo diario"].replace('[$,]', '', regex=True), errors='coerce') df_copy["Saldo Acumulado"] = pd.to_numeric(df_copy["Saldo Acumulado"].replace('[$,]', '', regex=True), errors='coerce') with pd.ExcelWriter(output, engine="openpyxl") as writer: df_copy.to_excel(writer, index=False) output.seek(0) return output
+
+st.download_button( label="Descargar Excel", data=convertir_excel(st.session_state.data), file_name="registro_proveedores_depositos.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" )
+
+Ver depósitos
+
+with st.expander("Ver depósitos registrados"): st.dataframe(st.session_state.df.drop(columns=["Mostrar"], errors="ignore"), use_container_width=True)
+
+Ver Notas de Débito
+
+with st.expander("Ver Notas de Débito"): st.dataframe(st.session_state.notas, use_container_width=True)
+
