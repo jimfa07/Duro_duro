@@ -213,7 +213,24 @@ st.dataframe(df_display, use_container_width=True)
 
 # Tabla de Notas de Débito
 st.subheader("Tabla de Notas de Débito")
-st.dataframe(st.session_state.notas, use_container_width=True)
+st.dataframe(st.session_state.notas.drop(columns=["Mostrar"], errors="ignore"), use_container_width=True)
+
+# Eliminar una Nota de Débito
+st.subheader("Eliminar una Nota de Débito")
+
+if not st.session_state.notas.empty:
+    st.session_state.notas["Mostrar"] = st.session_state.notas.apply(
+        lambda row: f"{row['Fecha']} - Libras: {row['Libras calculadas']:.2f} - Descuento real: ${row['Descuento real']:.2f}", axis=1
+    )
+    nota_a_eliminar = st.selectbox("Selecciona una nota para eliminar", st.session_state.notas["Mostrar"])
+    if st.button("Eliminar Nota de Débito seleccionada"):
+        index_eliminar = st.session_state.notas[st.session_state.notas["Mostrar"] == nota_a_eliminar].index[0]
+        st.session_state.notas.drop(index=index_eliminar, inplace=True)
+        st.session_state.notas.reset_index(drop=True, inplace=True)
+        st.session_state.notas.to_pickle(DEBIT_NOTES_FILE)
+        st.success("Nota de débito eliminada correctamente.")
+else:
+    st.write("No hay notas de débito para eliminar.")
 
 # Descargar Excel
 @st.cache_data
@@ -233,20 +250,4 @@ st.download_button(
 )
 
 with st.expander("Ver depósitos registrados"):
-    # Eliminar un registro de Nota de Débito
-st.subheader("Eliminar una Nota de Débito")
-
-if not st.session_state.notas_debito.empty:
-    st.session_state.notas_debito["Mostrar"] = st.session_state.notas_debito.apply(
-        lambda row: f"{row['Fecha']} - Libras: {row['Libras calculadas']:.2f} - Descuento real: ${row['Descuento real']:.2f}", axis=1
-    )
-    nota_a_eliminar = st.selectbox("Selecciona una nota para eliminar", st.session_state.notas_debito["Mostrar"])
-    if st.button("Eliminar Nota de Débito seleccionada"):
-        index_eliminar = st.session_state.notas_debito[st.session_state.notas_debito["Mostrar"] == nota_a_eliminar].index[0]
-        st.session_state.notas_debito.drop(index=index_eliminar, inplace=True)
-        st.session_state.notas_debito.reset_index(drop=True, inplace=True)
-        st.session_state.notas_debito.to_pickle(NOTAS_DEBITO_FILE)
-        st.success("Nota de débito eliminada correctamente.")
-else:
-    st.write("No hay notas de débito para eliminar.")
     st.dataframe(st.session_state.df.drop(columns=["Mostrar"], errors="ignore"), use_container_width=True)
